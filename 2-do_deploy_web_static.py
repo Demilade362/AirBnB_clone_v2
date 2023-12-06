@@ -1,30 +1,36 @@
 #!/usr/bin/python3
-"""
-Fabric script based on the file 1-pack_web_static.py that distributes an
-archive to the web servers
-"""
+""" Web Server """
+import os
+import time
+from fabric.api import local, run, put, env
 
-from fabric.api import put, run, env
-from os.path import exists
-env.hosts = ['142.44.167.228', '144.217.246.195']
+env.hosts = ['54.157.184.108', '52.3.248.81']
+env.user = "ubuntu"
 
 
 def do_deploy(archive_path):
-    """distributes an archive to the web servers"""
-    if exists(archive_path) is False:
+    """ distributes an archive to web servers """
+    if not os.path.exists(archive_path):
         return False
+
     try:
-        file_n = archive_path.split("/")[-1]
-        no_ext = file_n.split(".")[0]
-        path = "/data/web_static/releases/"
-        put(archive_path, '/tmp/')
-        run('mkdir -p {}{}/'.format(path, no_ext))
-        run('tar -xzf /tmp/{} -C {}{}/'.format(file_n, path, no_ext))
-        run('rm /tmp/{}'.format(file_n))
-        run('mv {0}{1}/web_static/* {0}{1}/'.format(path, no_ext))
-        run('rm -rf {}{}/web_static'.format(path, no_ext))
-        run('rm -rf /data/web_static/current')
-        run('ln -s {}{}/ /data/web_static/current'.format(path, no_ext))
+        arch_filename = os.path.basename(archive_path)
+        new_path = '/data/web_static/releases/{}/'.format(
+                    arch_filename[:-4])
+        put(archive_path, "/tmp/")
+
+        run("mkdir -p {}".format(new_path))
+        run("tar -xzf /tmp/{} -C {}".format(arch_filename,
+                                            new_path))
+
+        run("rm /tmp/{}".format(arch_filename))
+
+        run("mv {}web_static/* {}/".format(new_path, new_path))
+        run("rm -rf {}web_static".format(new_path))
+
+        run("rm -rf /data/web_static/current")
+        run("ln -s {} /data/web_static/current".format(new_path))
+        print("New version deployed!")
         return True
-    except:
+    except Exception:
         return False
