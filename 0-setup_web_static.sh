@@ -1,91 +1,89 @@
 #!/usr/bin/env bash
-# sets up web servers for the deployment of web_static
+# script that sets up your web servers for deployment of web_static.
+# shellcheck disable=SC2230
 
-if ! dpkg -l | grep -q nginx;
-then
-        apt-get -y update
-        apt-get -y install nginx
+if [[ "$(which nginx | grep -c nginx)" == '0' ]]; then
+    apt-get update
+    apt-get -y install nginx
 fi
 
+# Create config file
+SERVER_CONFIG="server {
+	listen 80 default_server;
+	listen [::]:80 default_server;
+
+	server_name _;
+	index index.html index.htm;
+	error_page 404 /404.html;
+	add_header X-Served-By \$hostname;
+
+	location / {
+		root /var/www/html/;
+		try_files \$uri \$uri/ =404;
+	}
+
+	location /hbnb_static/ {
+		alias /data/web_static/current/;
+		try_files \$uri \$uri/ =404;
+	}
+
+	if (\$request_filename ~ redirect_me) {
+		rewrite ^ https://sketchfab.com/bluepeno/models permanent;
+	}
+
+	location = /404.html {
+		root /var/www/error/;
+		internal;
+	}
+}"
+
+# Create fake HTML file /data/web_static/releases/test/index.html (with simple content, to test your Nginx configuration)
+HOME_PAGE="<!DOCTYPE html>
+<html lang='en-US'>
+	<head>
+		<title>Home - AirBnB Clone</title>
+	</head>
+	<body>
+		<h1>Welcome to AirBnB!</h1>
+	<body>
+</html>
+"
+
+mkdir -p /var/www/html /var/www/error
+chmod -R 755 /var/www
+echo 'Hello World!' > /var/www/html/index.html
+echo -e "Ceci n\x27est pas une page" > /var/www/error/404.html
+
+# Create the folder /data/ if it doesn’t already exist
+# Create the folder /data/web_static/ if it doesn’t already exist
+# Create the folder /data/web_static/releases/ if it doesn’t already exist
+# Create the folder /data/web_static/releases/test/ if it doesn’t already exist
 mkdir -p /data/web_static/releases/test/
+
+# Create the folder /data/web_static/shared/ if it doesn’t already exist
 mkdir -p /data/web_static/shared/
 
-echo '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <style>
-        body {
-            background-color: #120607;
-            color: aliceblue;
-            text-align: center;
-        }
+# Echo fake HTML here
+echo -e "$HOME_PAGE" > /data/web_static/releases/test/index.html
+[ -d /data/web_static/current ] && rm -rf /data/web_static/current
 
-        a {
-            color: bisque;
-            text-decoration: none;
-            font-style: italic;
-            font-family: "Courier New", Courier, monospace;
-            border: 2px groove;
-            padding: 10px;
-            border-radius: 5px;
-        }
-
-        a:hover {
-            animation: color-ray 2s infinite cubic-bezier(0.47, 0, 0.745, 0.715) alternate-reverse;
-        }
-
-        @keyframes color-ray {
-            0% {
-                color: red;
-                border-color: red;
-                text-shadow: 0 0 5px red;
-            }
-
-            20% {
-                color: yellow;
-                border-color: yellow;
-                text-shadow: 0 0 10px yellow;
-            }
-
-            40% {
-                color: blue;
-                border-color: blue;
-                text-shadow: 0 0 8px blue;
-            }
-
-            60% {
-                color: magenta;
-                border-color: magenta;
-                text-shadow: 0 0 3px magenta;
-            }
-
-            80% {
-                color: cyan;
-                border-color: cyan;
-                text-shadow: 0 0 7px cyan;
-            }
-        }
-    </style>
-</head>
-<body>
-    <h1>Hello World</h1>
-    <a href="https://bio.link/olajide">Adeniji Olajide</a>
-</body>
-</html>' > /data/web_static/releases/test/index.html
-
+# Create a symbolic link /data/web_static/current linked to the /data/web_static/releases/test/
+# If the symbolic link already exists, it should be deleted and recreated every time the script is ran
 ln -sf /data/web_static/releases/test/ /data/web_static/current
 
-chown -R ubuntu:ubuntu /data/
+# Give ownership of the /data/ folder to the ubuntu user AND group (you can assume this user and group exist).
+# This should be recursive; everything inside should be created/owned by this user/group.
+chown -hR ubuntu:ubuntu /data
 
+# Update the Nginx configuration to serve the content of /data/web_static/current/ to hbnb_static
+# (ex: https://mydomainname.tech/hbnb_static). Don’t forget to restart Nginx after updating the configuration:
+# Use alias inside your Nginx configuration
+bash -c "echo -e '$SERVER_CONFIG' > /etc/nginx/sites-available/default"
+ln -sf '/etc/nginx/sites-available/default' '/etc/nginx/sites-enabled/default'
 
-nginx="/etc/nginx/sites-enabled/default"
-n_alias="\n\tlocation /hbnb_static/ {\n\t\talias /data/web_static/current/;\n\t}"
-
-if ! grep -q "$n_alias" "$nginx"; then
-        sed -i "/error_page 404 \\/404.html;/a\\$n_alias" "$nginx"
+if [ "$(pgrep -c nginx)" -le 0 ]; then
+	service nginx start
+else
+	service nginx restart
+    service nginx reload
 fi
-
-service nginx restart
